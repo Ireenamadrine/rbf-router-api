@@ -1,36 +1,20 @@
-# ---------- Build stage ----------
-FROM python:3.11-slim AS builder
-
-WORKDIR /build
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential && rm -rf /var/lib/apt/lists/*
-
-COPY requirements.txt .
-RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
-
-# ---------- Runtime stage ----------
 FROM python:3.11-slim
 
 WORKDIR /app
 
-# Copy installed packages from builder
-COPY --from=builder /install /usr/local
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy app
 COPY app ./app
-COPY tests ./tests
 
-# Environment
+RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
+USER appuser
+
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    MODEL_NAME=all-MiniLM-L6-v2 \
-    ROUTER_PATH=/app/data/router.joblib \
-    DATABASE_PATH=/app/data/rbf_router.db
+    ROUTER_PATH=/tmp/router.joblib \
+    DATABASE_PATH=/tmp/rbf_router.db
 
-# Create writable data dir
-RUN mkdir -p /app/data
+EXPOSE 8000
 
-EXPOSE 8080
-
-# Cloud Run expects the container to listen on $PORT (default 8080)
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080", "--workers", "1"]
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
